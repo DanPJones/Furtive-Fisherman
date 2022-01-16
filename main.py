@@ -145,7 +145,7 @@ def splash_finder(good, bad, x1, x2, y1, y2):
             # grab screenshot
             sct_img = sct.grab(sct.monitors[current_display])
             img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-            img.save('farquiqui.png')
+            # img.save('farquiqui.png')
 
             stop()
             frame_start = time.time()
@@ -262,6 +262,14 @@ def stop():
         window['-MISSED-'].update('Missed: 0')
         raise ValueError('A very specific bad thing happened.')
 
+def popup(message):
+    layout = [
+        [sg.Text(message)],
+        [sg.Push(), sg.Button('OK')],
+        [sg.Input()]
+    ]
+    sg.Window('POPUP', layout, modal=True).read(close=True)
+
 
 # event loop
 x1, x2, y1, y2 = 0, 0, 0, 0
@@ -271,6 +279,7 @@ while True:
     if event is None:
         break
     if event == 'Start':
+        popup('FartAss')
         window['-CONSOLE-'].update('-Running-')
         quit = False
         # create thread

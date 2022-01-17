@@ -1,3 +1,4 @@
+from tkinter import CENTER
 import PySimpleGUI as sg
 import time
 import random
@@ -264,14 +265,14 @@ def stop():
 
 def popup(message):
     layout = [
-        [sg.Text('Sign In')],
+        [sg.Text('Sign In', justification='center')],
         [sg.Text('Email Address')],
         [sg.Input()],
         [sg.Text('Password')],
-        [sg.Input()],
+        [sg.Input(password_char='*')],
         [sg.Push(), sg.Button('Submit')],
     ]
-    sg.Window('POPUP', layout, modal=True).read(close=True)
+    sg.Window('Fisherman', layout, modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 5)).read(close=True)
 
 # event loop
 x1, x2, y1, y2 = 0, 0, 0, 0

@@ -262,6 +262,16 @@ def stop():
         window['-MISSED-'].update('Missed: 0')
         raise ValueError('A very specific bad thing happened.')
 
+def popup(message):
+    layout = [
+        [sg.Text('Sign In')],
+        [sg.Text('Email Address')],
+        [sg.Input()],
+        [sg.Text('Password')],
+        [sg.Input()],
+        [sg.Push(), sg.Button('Submit')],
+    ]
+    sg.Window('POPUP', layout, modal=True).read(close=True)
 
 # event loop
 x1, x2, y1, y2 = 0, 0, 0, 0
@@ -271,6 +281,7 @@ while True:
     if event is None:
         break
     if event == 'Start':
+        popup('as')
         window['-CONSOLE-'].update('-Running-')
         quit = False
         # create thread

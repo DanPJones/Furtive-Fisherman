@@ -1,4 +1,3 @@
-from tkinter import CENTER
 import PySimpleGUI as sg
 import time
 import random
@@ -10,6 +9,7 @@ import mss
 import mss.tools
 import win32api
 import win32gui
+import socket
 
 scaleFactor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
 
@@ -29,9 +29,12 @@ found = 0
 missed = 0
 quit = False
 
-menu_def = [['File', ['Open', 'Save', 'Settings', ]],
+menu_def = [
+            ['File', ['Open', 'Save', 'Settings', ]],
             ['Edit', ['Paste', ['Special', 'Normal', ], 'Undo'], ],
-            ['Help', 'About...'], ]
+            ['Account', ['Log In', 'Sign Up', 'Log Out']],
+            ['Help', 'About...'], 
+            ]
 
 sg.ChangeLookAndFeel('LightGreen2')
 sg.SetOptions(margins=(margins, margins), element_padding=(0, 0))
@@ -263,26 +266,53 @@ def stop():
         window['-MISSED-'].update('Missed: 0')
         raise ValueError('A very specific bad thing happened.')
 
-def popup(message):
-    layout = [
+def loginWindow():
+
+    uname = ''
+    pword = ''
+
+    login_layout = [
         [sg.Text('Sign In', justification='center')],
         [sg.Text('Email Address')],
-        [sg.Input()],
+        [sg.Input(key='-email-')],
         [sg.Text('Password')],
-        [sg.Input(password_char='*')],
+        [sg.Input(key='-password-', password_char='*')],
         [sg.Push(), sg.Button('Submit')],
     ]
-    sg.Window('Fisherman', layout, modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 5)).read(close=True)
+
+    login_window = sg.Window('Fisherman', login_layout, modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 5))
+
+    while True:
+        event, values = login_window.read()
+        if event is None:
+            break
+        elif event == 'Submit':
+            uname = values['-email-']
+            pword = values['-password-']
+            break
+    
+    login_window.close()
+    return uname, pword
+
+
+def connectToServer():
+
+
 
 # event loop
 x1, x2, y1, y2 = 0, 0, 0, 0
+username, password = '', ''
 while True:
+    
     event, values = window.read()
 
     if event is None:
         break
+    if event == 'Log In':
+        username, password = loginWindow()
+        print(username, password)
+
     if event == 'Start':
-        popup('as')
         window['-CONSOLE-'].update('-Running-')
         quit = False
         # create thread

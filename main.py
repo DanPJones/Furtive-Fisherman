@@ -9,7 +9,9 @@ import mss
 import mss.tools
 import win32api
 import win32gui
-import socket
+import requests
+import jwt
+import datetime
 
 scaleFactor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
 
@@ -39,15 +41,15 @@ menu_def = [
 sg.ChangeLookAndFeel('LightGreen2')
 sg.SetOptions(margins=(margins, margins), element_padding=(0, 0))
 layout = [[sg.Menu(menu_def)],
-          [sg.Button('Start'), sg.Button('Stop'), sg.Text('Fish to catch:'), sg.Input(key='-TIMER-')],
+          [sg.Button('Start', key='-START-'), sg.Button('Stop'), sg.Text('Fish to catch:'), sg.Input(key='-TIMER-')],
           [sg.Text('Caught: ' + str(found), key='-FISHED-', size=(10, 0)),
            sg.Text('Missed: ' + str(missed), key='-MISSED-', size=(10, 0)),
            sg.Text('Input:'), sg.Input(key='-INPUT-', default_text='1')],
-          [sg.Text('-Red to begin-', key='-CONSOLE-', size=(100, 0))],
+          [sg.Text('-Sign In-', key='-CONSOLE-', size=(100, 0))],
           [sg.Graph((graph_width, graph_height), (0, 0), (100, 100), background_color='red', key='-GRAPH-')]]
 
 # CHANGE PADDING TO OCIJASO AND MAKE FUNCTION THAT GETS X AND Y TO GRAPH
-window = sg.Window('Fisherman', layout, icon='me.ico', size=(gui_width, gui_height), transparent_color='red',
+window = sg.Window('Fisherman', layout, icon='flasher.ico', size=(gui_width, gui_height), transparent_color='red',
                    keep_on_top=True, element_padding=(padding, padding), grab_anywhere=True)
 
 
@@ -129,19 +131,40 @@ def color_to_tuple(RGBint):
     red = (RGBint >> 16) & 255
     return red, green, blue
 
+def getAvgBrightness(x1, x2, y1, y2):
+    # get monitor   window is on
+    sum = 0
+    counter = 0
+    with mss.mss() as sct:
+        current_display = get_windows_display(x, y)
+        # grab screenshot
+        sct_img = sct.grab(sct.monitors[current_display])
+        img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+        for i in range(int(y+y1), int(y+y2)):
+            for j in range(int(x+x1), int(x+x2)):
+                r, g, b = img.getpixel((j, i))
+                sum += r + b + g
+                counter += 1
+    
+    return sum / counter
 
 def splash_finder(good, bad, x1, x2, y1, y2):
     stop()
     start = time.time()
     time.sleep(0.1)
     end = time.time()
+    init = True
+    global maxSum
+    maxSum = 0
 
     x1, x2, y1, y2 = get_graph_dimensions()
 
-    while start - end > - random.uniform(23, 25):
+    # avgBril = getAvgBrightness(x1, x2, y1, y2)
+    # print("avgggg: ", avgBril)
+
+    while start - end > - random.uniform(28, 32):
 
         x, y = window.CurrentLocation()
-       #  print('TEST_WINDOW:', x,y)
 
         # get monitor window is on
         with mss.mss() as sct:
@@ -151,13 +174,25 @@ def splash_finder(good, bad, x1, x2, y1, y2):
             img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
             # img.save('farquiqui.png')
 
+            # get max brightness val
+            if init:
+                for i in range(int(y+y1), int(y+y2)):
+                    for j in range(int(x+x1), int(x+x2)):
+                        r, g, b = img.getpixel((j, i))
+                        maxSum = max(r + b + g, maxSum)
+                init = False
+                print("GINGO", maxSum)
+
+            
+
+
+
             stop()
             frame_start = time.time()
             for i in range(int(y+y1), int(y+y2)):
                 for j in range(int(x+x1), int(x+x2)):
-                    # print('TEST_GETPIXEL:', '\n', x, x1, "\n", y, y1)
                     r, g, b = img.getpixel((j, i))
-                    if (r + g + b) > 540:
+                    if (r + g + b) >= min(maxSum + 10, 255 * 3):
                         c_sum = r + g + b
 
                         # alternatively, trying looking for number of lighter pixels relative to the darker. Look
@@ -171,15 +206,14 @@ def splash_finder(good, bad, x1, x2, y1, y2):
                                 c_sum += rd + bd + gd
 
                             # if square brightness is splash-bright
-                            if c_sum > 4500:
+                            if c_sum > maxSum * 10:
                                 good += 1
                                 window['-FISHED-'].update('Caught: ' + str(good))
-                                print(j, i)
                                 return j + sct.monitors[current_display]["left"], i+10 + sct.monitors[current_display]["top"], good, bad
             # cap fps to ~20fps
-            # now = time.time()
-            # if (now - frame_start) < 0.05:
-            #     time.sleep(0.05 - (now - frame_start))
+            now = time.time()
+            if (now - frame_start) < 0.05:
+                time.sleep(0.05 - (now - frame_start))
 
 
 
@@ -194,11 +228,15 @@ def splash_finder(good, bad, x1, x2, y1, y2):
 def click_splash(hwnd, x, y):
     x, y = win32gui.ScreenToClient(hwnd, (x, y))
     coord = win32api.MAKELONG(x, y)
-    win32gui.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, 0, coord)
-    win32gui.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, coord)
+    win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, 0x48, 0)
+    win32gui.PostMessage(hwnd, win32con.WM_KEYUP, 0x48, 0)
+
 
 
 def fisher(found, missed):
+
+    global token
+
     ftc = values['-TIMER-']
     unlim = True
     intFTC = -1
@@ -208,11 +246,10 @@ def fisher(found, missed):
         try:
             intFTC = int(ftc)
         except:
-            window['-CONSOLE-'].update('-Timer must have int-')
+            window['-CONSOLE-'].update('-Timer must be a number-')
             raise ValueError('Timer value must be int.')
         intFTC = int(ftc)
 
-    print(intFTC)
 
     runs = 0
 
@@ -220,6 +257,21 @@ def fisher(found, missed):
     while unlim or intFTC > 0:
         stop()
 
+        if (not token ): 
+            window['-CONSOLE-'].update('-Log in to fish-')
+            break
+
+        try:
+            exp = getExpTime()
+            if (exp < 600):
+                print('new token pls. time left: ', exp)
+                login(username, password)
+
+        except Exception as e:
+            window['-CONSOLE-'].update("-Bad Token: Sign in -")
+            break
+
+            
         # vars
         good = found
         bad = missed
@@ -231,9 +283,21 @@ def fisher(found, missed):
         # get wow handle
         hwnd = win32gui.FindWindow('GxWindowClass', 'World of Warcraft')
 
+        county = 0
+        timeS = time.time()
         # tap 1 (currently 1 is hardcoded)
-        win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, 0x31, 0)
-        win32api.PostMessage(hwnd, win32con.WM_KEYUP, 0x31, 0)
+        for x in range(0, random.randrange(20,40)):
+            win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, 0x31, 0)
+            win32api.PostMessage(hwnd, win32con.WM_KEYUP, 0x31, 0)
+            time.sleep(random.uniform(0.02, 0.05))
+
+        # waiting for bauber to become opaque after spawning
+        while time.time() - timeS < 2.3:
+            county += 1
+            time.sleep(0.1)
+
+        print('mmhmm yess', county)
+
 
         # find splash
         bx, by, found, missed = splash_finder(good, bad, x1, x2, y1, y2)
@@ -266,21 +330,70 @@ def stop():
         window['-MISSED-'].update('Missed: 0')
         raise ValueError('A very specific bad thing happened.')
 
+def login(email, password):
+    global token
+    # The URL of the Flask API endpoint
+    url = 'http://23.245.220.91:5000/login'
+
+    # Data to be sent in the POST request
+    payload = {
+        'email': email,
+        'password': password
+    }
+
+    # Make the POST request and get the response
+    response = requests.post(url, json=payload)
+
+    if response.ok:
+        r_data = response.json()
+        token = r_data['token']
+        if not window['-CONSOLE-'].get() == "-Running-":
+            window['-CONSOLE-'].update('-Signed In-')
+    elif response.status_code == 400:
+        window['-CONSOLE-'].update('-Bad Credentials-')
+    else:
+        window['-CONSOLE-'].update('-Error Signing In-')
+
+
+
+def signUp(email, password):
+    global token
+    # The URL of the Flask API endpoint
+    url = 'http://23.245.220.91:5000/signUp'
+
+    # Data to be sent in the POST request
+    data = {
+        'email': email,
+        'password': password
+    }
+
+    # Make the POST request and get the response
+    response = requests.post(url, json=data)
+
+
+
+    if response.ok:
+        window['-CONSOLE-'].update('-Account Created-')
+        r_data = response.json()
+        token = r_data['token']
+    elif response.status_code == 401:
+        window['-CONSOLE-'].update('-Account Already Exists-')
+    else:
+        window['-CONSOLE-'].update('-Error Creating Account-')
 def loginWindow():
 
     uname = ''
     pword = ''
 
     login_layout = [
-        [sg.Text('Sign In', justification='center')],
-        [sg.Text('Email Address')],
-        [sg.Input(key='-email-')],
-        [sg.Text('Password')],
-        [sg.Input(key='-password-', password_char='*')],
+        [sg.Text('Sign In', font=(30), pad=(0, 5,))],
+        [sg.Text('Username: '), sg.Push(), sg.Input(key='-email-', size=(30,0))],
+        [sg.Text('Password: '), sg.Push(), sg.Input(key='-password-', password_char='*', size=(30,0))],
         [sg.Push(), sg.Button('Submit')],
     ]
 
-    login_window = sg.Window('Fisherman', login_layout, modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 5))
+    x, y = window.current_location()
+    login_window = sg.Window('Fisherman', login_layout, icon='flasher.ico', modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 3), margins=(20, 20), location=(x - 50, y + 50))
 
     while True:
         event, values = login_window.read()
@@ -294,26 +407,77 @@ def loginWindow():
     login_window.close()
     return uname, pword
 
+def signUpWindow():
+
+    uname = ''
+    pword = ''
+
+    signup_layout = [
+        [sg.Text('Sign Up', font=(30), pad=(0, 5,))],
+        [sg.Text('Username: '), sg.Push(), sg.Input(key='-email-', size=(30,0))],
+        [sg.Text('Password: '), sg.Push(), sg.Input(key='-password-', password_char='*', size=(30,0))],
+        [sg.Push(), sg.Button('Submit')],
+    ]
+
+    x, y = window.current_location()
+    signUp_window = sg.Window('Fisherman', signup_layout, icon='flasher.ico', modal=True, keep_on_top=True, element_justification='center', element_padding=(0, 3), margins=(20, 20), location=(x - 50, y + 50))
+
+    while True:
+        event, values = signUp_window.read()
+        if event is None:
+            break
+        elif event == 'Submit':
+            uname = values['-email-']
+            pword = values['-password-']
+            if uname and pword: window['-CONSOLE-'].update('Creating user, logging in...')
+
+            break
+    
+    signUp_window.close()
+    return uname, pword
+
 
 def connectToServer():
+    pass
 
-
+def getExpTime():
+    global token
+    payload = jwt.decode(token, options={"verify_signature": False})
+    exp = payload.get('exp')
+    return exp - time.time()
 
 # event loop
 x1, x2, y1, y2 = 0, 0, 0, 0
 username, password = '', ''
+SECRET_KEY = '9PVQWd22nq8ues0KJTSGLsor3KEQ1pksYKLZ9JEJFag'
+token = ''
+loggedIn = False
 while True:
-    
     event, values = window.read()
 
     if event is None:
         break
     if event == 'Log In':
         username, password = loginWindow()
-        print(username, password)
 
-    if event == 'Start':
+        if username and password :
+            login(username, password)
+ 
+    if event == 'Sign Up':
+        username, password = signUpWindow()
+        if username and password :
+            signUp(username, password)
+
+
+    if event == '-START-':
+        if not (username or password) or not token:
+            username, password = loginWindow()
+            if username and password:
+                login(username, password)
+
         window['-CONSOLE-'].update('-Running-')
+        window['-START-'].update(disabled=True)
+
         quit = False
         # create thread
         if threading.active_count() < 2:
@@ -325,9 +489,14 @@ while True:
             fish_fucker = threading.Thread(target=fisher, daemon=True, args=fisher_args)
             fish_fucker.start()
 
+    if event == 'Log Out':
+        token = ''
+        window['-CONSOLE-'].update('-Log in to fish-')
+
+
     if event == 'Stop':
         window['-CONSOLE-'].update('-Stopping...-')
-        print(window.current_location())
+        window['-START-'].update(disabled=False)
         if threading.active_count() < 2:
             window['-CONSOLE-'].update('-Stopped-')
 

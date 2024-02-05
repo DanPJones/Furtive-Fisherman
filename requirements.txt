@@ -1,0 +1,6 @@
+PySimpleGUI
+Pillow
+mss
+pywin32
+requests
+PyJWT
